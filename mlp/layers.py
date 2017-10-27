@@ -321,9 +321,9 @@ class LeakyReluLayer(Layer):
     def fprop(self, inputs):
         """Forward propagates activations through the layer transformation.
 
-        For inputs `x` and outputs `y` this corresponds to `y = max(0, x)`.
+        For inputs `x` and outputs `y` this corresponds to `αx if x ≤ 0 && x if x > 0`.
         """
-        outputs = inputs #remove and replace with your code
+        outputs = np.maximum(inputs, 0.01 * inputs)
         return outputs
 
     def bprop(self, inputs, outputs, grads_wrt_outputs):
@@ -332,7 +332,7 @@ class LeakyReluLayer(Layer):
         Given gradients with respect to the outputs of the layer calculates the
         gradients with respect to the layer inputs.
         """
-        gradients = inputs #remove and replace with your code
+        gradients = (outputs > 0) * grads_wrt_outputs + (outputs <= 0) * 0.01 * grads_wrt_outputs
         return gradients
 
     def __repr__(self):
@@ -346,7 +346,7 @@ class ELULayer(Layer):
 
         For inputs `x` and outputs `y` this corresponds to `y = max(0, x)`.
         """
-        outputs = inputs #remove and replace with your code
+        outputs = inputs * (inputs > 0) + (inputs <= 0) * (np.exp(inputs) - 1)
         return outputs
 
     def bprop(self, inputs, outputs, grads_wrt_outputs):
@@ -355,7 +355,8 @@ class ELULayer(Layer):
         Given gradients with respect to the outputs of the layer calculates the
         gradients with respect to the layer inputs.
         """
-        gradients = inputs #remove and replace with your code
+        #gradients = grads_wrt_outputs * (outputs > 0) + (outputs <= 0) * (self.fprop(inputs) + 1) * grads_wrt_outputs
+        gradients = grads_wrt_outputs * (outputs > 0) + (outputs <= 0) * np.exp(inputs) * grads_wrt_outputs
         return gradients
 
     def __repr__(self):
@@ -370,7 +371,7 @@ class SELULayer(Layer):
 
         For inputs `x` and outputs `y` this corresponds to `y = max(0, x)`.
         """
-        outputs = inputs #remove and replace with your code
+        outputs = 1.0507 * (inputs * (inputs > 0) + (inputs <= 0) * 1.6733  * (np.exp(inputs) - 1))
         return outputs
 
     def bprop(self, inputs, outputs, grads_wrt_outputs):
@@ -379,7 +380,8 @@ class SELULayer(Layer):
         Given gradients with respect to the outputs of the layer calculates the
         gradients with respect to the layer inputs.
         """
-        gradients = inputs #remove and replace with your code
+        #TODO - why inputs ???
+        gradients = 1.0507 * (grads_wrt_outputs * (outputs > 0) + (outputs <= 0) * 1.6733 * np.exp(inputs) * grads_wrt_outputs)
         return gradients
 
     def __repr__(self):
