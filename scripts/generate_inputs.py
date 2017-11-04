@@ -4,7 +4,7 @@ import argparse
 
 parser = argparse.ArgumentParser(description='Welcome to GAN-Shot-Learning script')
 
-parser.add_argument('--student_id', nargs="?", type=str, help='Your student id in the format "sxxxxxxx"')
+parser.add_argument("s1443569", nargs="?", type=str, help='Your student id in the format "sxxxxxxx"')
 
 args = parser.parse_args()
 
