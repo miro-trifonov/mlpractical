@@ -163,14 +163,14 @@ class MomentumLearningRule(GradientDescentLearningRule):
             
 class RMSpropLearningRule(GradientDescentLearningRule):
     def __init__(self, learning_rate=1e-3, decay_rate=0.9):
-        super(MomentumLearningRule, self).__init__(learning_rate)
+        super(RMSpropLearningRule, self).__init__(learning_rate)
         assert decay_rate >= 0. and decay_rate <= 1., (
             'decay_rate should be in the range [0, 1].'
         )
         self.decay_rate = decay_rate
 
     def initialise(self, params):
-        super(RMS, self).initialise(params)
+        super(RMSpropLearningRule, self).initialise(params)
         self.moms = []
         for param in self.params:
             self.moms.append(np.zeros_like(param))
@@ -181,14 +181,12 @@ class RMSpropLearningRule(GradientDescentLearningRule):
 
     def update_params(self, grads_wrt_params):
         for param, mom, grad in zip(self.params, self.moms, grads_wrt_params):
-            sumSquaredGradient = 
-            mom =  self.decay_rate * mom + (1 - self.decay_rate) * grad**2
-            # epsilon 1e-8 ?
-            param += -self.learning_rate *grad / (np.sqrt(mom) + 1e-6)
+            mom =  self.decay_rate * mom + (1. - self.decay_rate) * np.square(grad)
+            param -= self.learning_rate *grad / (np.sqrt(mom + 1e-6))
             
 class AdamLearningRule(GradientDescentLearningRule):
-    def __init__(self, learning_rate=1e-3,decay_rate=0.9,decay_rate_2=0.999):
-        super(MomentumLearningRule, self).__init__(learning_rate)
+    def __init__(self, learning_rate=1e-4,decay_rate=0.9,decay_rate_2=0.999):
+        super(AdamLearningRule, self).__init__(learning_rate)
         assert decay_rate >= 0. and decay_rate <= 1., (
             'decay_rate should be in the range [0, 1].'
         )
@@ -199,7 +197,7 @@ class AdamLearningRule(GradientDescentLearningRule):
         self.decay_rate_2 = decay_rate_2
 
     def initialise(self, params):
-        super(RMS, self).initialise(params)
+        super(AdamLearningRule, self).initialise(params)
         self.moms = []
         for param in self.params:
             self.moms.append(np.zeros_like(param))
@@ -210,7 +208,7 @@ class AdamLearningRule(GradientDescentLearningRule):
     def reset(self):
         for mom in zip(self.moms):
             mom *= 0.
-        for vel in zip(self.vels)
+        for vel in zip(self.vels):
             vel *= 0.
 
     def update_params(self, grads_wrt_params):
@@ -218,4 +216,4 @@ class AdamLearningRule(GradientDescentLearningRule):
                                     self.vels,  grads_wrt_params):
             mom =  self.decay_rate * mom + (1 - self.decay_rate) * grad
             vel =  self.decay_rate_2 * vel + (1 - self.decay_rate_2) * grad**2
-            param += -self.learning_rate *mom / (np.sqrt(vel) + 1e-6)
+            param += -self.learning_rate *mom / (np.sqrt(vel+1e-6))

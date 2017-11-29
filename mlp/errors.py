@@ -156,7 +156,7 @@ class CrossEntropySoftmaxError(object):
         """
         probs = np.exp(outputs)
         probs /= probs.sum(-1)[:, None]
-        return -np.mean(np.sum(targets * np.log(probs), axis=1))
+        return -np.mean(np.sum(targets * np.log(probs + 1e-8), axis=1))
 
     def grad(self, outputs, targets):
         """Calculates gradient of error function with respect to outputs.

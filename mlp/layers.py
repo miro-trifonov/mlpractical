@@ -15,6 +15,7 @@ respect to the layer parameters.
 import numpy as np
 import mlp.initialisers as init
 from mlp import DEFAULT_SEED
+from mlp import im2col
 
 class Layer(object):
     """Abstract class defining the interface for a layer."""
@@ -358,7 +359,16 @@ class BatchNormalizationLayer(StochasticLayerWithParameters):
     def fprop(self, inputs, stochastic=True):
         """Forward propagates inputs through a layer."""
 
-        raise NotImplementedError
+        mu = np.mean(inputs, axis=0)
+        var = np.var(inputs, axis=0)
+        
+        inputs_norm = (inputs - mu)/(np.sqrt(var)+ self.epsilon)
+        
+        out = self.gamma * inputs_norm + self.beta
+        # what is cache and why to use it
+        #self.cache = mu,var
+        
+        return out
 
     def bprop(self, inputs, outputs, grads_wrt_outputs):
         """Back propagates gradients through a layer.
@@ -378,7 +388,19 @@ class BatchNormalizationLayer(StochasticLayerWithParameters):
             (batch_size, input_dim).
         """
 
-        raise NotImplementedError
+        n,d = inputs.shape
+        
+        mu = np.mean(inputs, axis=0)
+        var = np.var(inputs, axis=0)
+        std_inv = 1. / np.sqrt(var + self.epsilon)
+        #inputs_norm = (inputs - mean) / (variance+self.epsilon)**0.5
+        
+        dX_norm = grads_wrt_outputs * self.gamma 
+        
+        dvar = np.sum(dX_norm * (inputs-mu), axis=0)* -0.5 * std_inv**3
+        dmu = np.sum(dX_norm * -std_inv, axis=0)
+        res = dX_norm * std_inv + dvar * 2*(inputs - mu) / n + dmu / n
+        return res
 
     def grads_wrt_params(self, inputs, grads_wrt_outputs):
         """Calculates gradients with respect to layer parameters.
@@ -392,7 +414,16 @@ class BatchNormalizationLayer(StochasticLayerWithParameters):
             list of arrays of gradients with respect to the layer parameters
             `[grads_wrt_weights, grads_wrt_biases]`.
         """
-        raise NotImplementedError
+        n,d = inputs.shape
+        
+        mu = np.mean(inputs, axis=0)
+        var = np.var(inputs, axis=0)
+        
+        inputs_norm = (inputs - mu)/(np.sqrt(var+ self.epsilon))
+        
+        grads_wrt_gamma = np.sum(grads_wrt_outputs * inputs_norm, axis=0)
+        grads_wrt_beta = np.sum(grads_wrt_outputs, axis=0)
+        return [grads_wrt_gamma, grads_wrt_beta]
 
     def params_penalty(self):
         """Returns the parameter dependent penalty term for this layer.
@@ -525,14 +556,50 @@ class ConvolutionalLayer(LayerWithParameters):
 
     def fprop(self, inputs):
         """Forward propagates activations through the layer transformation.
-        For inputs `x`, outputs `y`, kernels `K` and biases `b` the layer
-        corresponds to `y = conv2d(x, K) + b`.
+        For inputs x, outputs y, kernels K and biases b the layer
+        corresponds to y = conv2d(x, K) + b.
         Args:
             inputs: Array of layer inputs of shape (batch_size, input_dim).
         Returns:
             outputs: Array of layer outputs of shape (batch_size, output_dim).
         """
-        raise NotImplementedError
+        input_col = im2col.im2col(inputs, self.kernel_dim_1, self.kernel_dim_2, padding=0, stride=1)
+        kernels_col = self.kernels.reshape(self.kernels.shape[0], -1)
+        outputs = kernels_col @ input_col + self.biases.reshape((self.num_output_channels, 1))
+        outputs = outputs.reshape(self.kernels.shape[0],
+                                  self.input_dim_1 - self.kernel_dim_1 + 1,
+                                  self.input_dim_2 - self.kernel_dim_2 + 1,
+                                  inputs.shape[0]).transpose(3, 0, 1, 2)
+
+        self.cache = (input_col)
+
+        return outputs
+
+    def grads_wrt_params(self, inputs, grads_wrt_outputs):
+        """Calculates gradients with respect to layer parameters.
+        Args:
+            inputs: array of inputs to layer of shape (batch_size, input_dim)
+            grads_wrt_to_outputs: array of gradients with respect to the layer
+                outputs of shape
+                (batch_size, num_output-_channels, output_dim_1, output_dim_2).
+        Returns:
+            list of arrays of gradients with respect to the layer parameters
+            [grads_wrt_kernels, grads_wrt_biases].
+        """
+
+        # if self.cache is not None:
+        #     input_col = self.cache[0]
+        # else:
+        #
+        input_col = im2col.im2col(inputs, self.kernel_dim_1, self.kernel_dim_2, padding=0, stride=1)
+
+        grads_wrt_biases = np.sum(grads_wrt_outputs, axis=(0, 2, 3)).reshape(self.num_output_channels, -1)
+
+        grads_out_col = grads_wrt_outputs.transpose(1, 2, 3, 0).reshape(self.num_output_channels, -1)
+
+        grads_wrt_kernels = (grads_out_col @ input_col.T).reshape(self.kernels_shape)
+
+        return [grads_wrt_kernels, grads_wrt_biases.reshape(self.num_output_channels)]
 
     def bprop(self, inputs, outputs, grads_wrt_outputs):
         """Back propagates gradients through a layer.
@@ -551,23 +618,14 @@ class ConvolutionalLayer(LayerWithParameters):
             Array of gradients with respect to the layer inputs of shape
             (batch_size, input_dim).
         """
-        # Pad the grads_wrt_outputs
+        grads_out_col = grads_wrt_outputs.transpose(1, 2, 3, 0).reshape(self.num_output_channels, -1)
+        kernels_col = self.kernels.reshape(self.num_output_channels, -1)
 
-        raise NotImplementedError
+        grads_wrt_inputs_col = kernels_col.T @ grads_out_col
 
-    def grads_wrt_params(self, inputs, grads_wrt_outputs):
-        """Calculates gradients with respect to layer parameters.
-        Args:
-            inputs: array of inputs to layer of shape (batch_size, input_dim)
-            grads_wrt_to_outputs: array of gradients with respect to the layer
-                outputs of shape
-                (batch_size, num_output-_channels, output_dim_1, output_dim_2).
-        Returns:
-            list of arrays of gradients with respect to the layer parameters
-            `[grads_wrt_kernels, grads_wrt_biases]`.
-        """
-
-        raise NotImplementedError
+        grads_wrt_inputs = im2col.col2im(grads_wrt_inputs_col, inputs.shape, self.kernel_dim_1, self.kernel_dim_2, padding=0,
+                                  stride=1)
+        return grads_wrt_inputs
 
     def params_penalty(self):
         """Returns the parameter dependent penalty term for this layer.
@@ -589,7 +647,6 @@ class ConvolutionalLayer(LayerWithParameters):
     def params(self, values):
         self.kernels = values[0]
         self.biases = values[1]
-
     def __repr__(self):
         return (
             'ConvolutionalLayer(\n'
@@ -600,8 +657,107 @@ class ConvolutionalLayer(LayerWithParameters):
             .format(self.num_input_channels, self.num_output_channels,
                     self.input_dim_1, self.input_dim_2, self.kernel_dim_1,
                     self.kernel_dim_2)
+        )   
+class MaxPoolingLayer(Layer):
+    def __init__(self, num_input_channels,
+                 input_dim_1, input_dim_2,
+                 kernel_dim_1, kernel_dim_2):
+        self.num_input_channels = num_input_channels
+        self.input_dim_1 = input_dim_1
+        self.input_dim_2 = input_dim_2
+        self.kernel_dim_1 = kernel_dim_1
+        self.kernel_dim_2 = kernel_dim_2
+        self.kernels_shape = (
+            kernel_dim_1, kernel_dim_2
         )
+        self.inputs_shape = (
+            None, num_input_channels, input_dim_1, input_dim_2
+        )
+        self.output_dim_1 = input_dim_1//kernel_dim_1
+        self.output_dim_2 = input_dim_2//kernel_dim_2
+        self.pool_size = kernel_dim_1
+        self.cache = None
+        
+    def fprop(self, inputs):
+        """Forward propagates activations through the layer transformation.
 
+            This corresponds to taking the maximum over non-overlapping pools of
+            inputs of a fixed size pool_size.
+
+            Args:
+                inputs: Array of layer inputs of shape (batch_size, n_channels, input_dim).
+
+            Returns:
+                outputs: Array of layer outputs of shape (batch_size, n_channels, output_dim).
+            """
+        assert inputs.shape[-1] % self.pool_size == 0, (
+                'Last dimension of inputs must be multiple of pool size')
+        assert inputs.shape[-2] % self.pool_size == 0, (
+                'Second to last dimension of inputs must be multiple of pool size')
+        inp_col = im2col.im2col(inputs.reshape((inputs.shape[0] * inputs.shape[1], 1, inputs.shape[2], inputs.shape[3])),
+                             self.pool_size,
+                             self.pool_size,
+                             padding=0,
+                             stride=self.pool_size)
+
+        max_ids = np.argmax(inp_col, axis=0)
+
+        self.cache = (inp_col, max_ids)
+
+        output = inp_col[max_ids, range(max_ids.size)].reshape(inputs.shape[-2] // self.pool_size,
+                                                               inputs.shape[-1] // self.pool_size,inputs.shape[0],
+                                                                 inputs.shape[1]).transpose(2, 3, 0, 1)
+
+        return output
+
+    def bprop(self, inputs, outputs, grads_wrt_outputs):
+        """Back propagates gradients through a layer.
+
+            Given gradients with respect to the outputs of the layer calculates the
+            gradients with respect to the layer inputs.
+
+            Args:
+                inputs: Array of layer inputs of shape (batch_size, input_dim).
+                outputs: Array of layer outputs calculated in forward pass of
+                    shape (batch_size, output_dim).
+                grads_wrt_outputs: Array of gradients with respect to the layer
+                    outputs of shape (batch_size, output_dim).
+
+            Returns:
+                Array of gradients with respect to the layer inputs of shape
+                (batch_size, input_dim).
+            """
+        if self.cache is not None:
+            inp_col, max_ids = self.cache
+        else:
+            inp_col = im2col.im2col(inputs.reshape((inputs.shape[0] * inputs.shape[1], 1, inputs.shape[2], inputs.shape[3])),
+                                 self.pool_size,
+                                 self.pool_size,
+                                 padding=0,
+                                 stride=self.pool_size)
+
+            max_ids = np.argmax(inp_col, axis=0)
+
+        grads_inp_col = np.zeros_like(inp_col)
+
+        grads_flat = grads_wrt_outputs.transpose(2,3,0,1).ravel()
+
+        grads_inp_col[max_ids, range(max_ids.size)] = grads_flat
+        B, C, H, W = inputs.shape
+        grads_wrt_inputs = im2col.col2im(grads_inp_col, (B * C, 1, H, W), self.pool_size, self.pool_size, padding=0,
+                                      stride=self.pool_size).reshape(inputs.shape)
+        return grads_wrt_inputs
+    def __repr__(self):
+        return (
+                'ConvolutionalLayer(\n'
+                '    num_input_channels={0}, num_output_channels={1},\n'
+                '    input_dim_1={2}, input_dim_2={3},\n'
+                '    kernel_dim_1={4}, kernel_dim_2={5}\n'
+                ')'
+                .format(self.num_input_channels, self.num_output_channels,
+                    self.input_dim_1, self.input_dim_2, self.kernel_dim_1,
+                    self.kernel_dim_2)
+        )   
 
 class ReluLayer(Layer):
     """Layer implementing an element-wise rectified linear transformation."""
