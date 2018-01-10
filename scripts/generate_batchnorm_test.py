@@ -4,11 +4,11 @@ import argparse
 
 parser = argparse.ArgumentParser(description='Welcome to GAN-Shot-Learning script')
 
-parser.add_argument('--student_id', nargs="?", type=str, help='Your student id in the format "sxxxxxxx"')
+parser.add_argument("s1443569", nargs="?", type=str, help='Your student id in the format "sxxxxxxx"')
 
 args = parser.parse_args()
 
-student_id = args.student_id
+student_id = "s1443569"
 
 def generate_inputs(student_id):
     student_number = student_id
